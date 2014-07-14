@@ -1,4 +1,5 @@
 *.deb
+_
 .theos
 obj
-_
+*.xcodeproj
