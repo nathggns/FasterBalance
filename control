@@ -4,6 +4,6 @@ Depends: mobilesubstrate
 Version: 0.0.1
 Architecture: iphoneos-arm
 Description: Speed up the HSBC Faster Balance by skipping the starting ad.
-Maintainer: Nathaniel Higgins
-Author: Nathaniel Higgins
+Maintainer: nathggns
+Author: nathggns
 Section: Tweaks
