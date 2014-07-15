@@ -3,3 +3,4 @@ _
 .theos
 obj
 *.xcodeproj
+hsbc.h
