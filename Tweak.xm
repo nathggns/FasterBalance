@@ -11,54 +11,77 @@ int passwordViewSubviews = 0;
 
 @interface Util : NSObject {}
 +(UIView*)getNestedView:(UIView*)parentView tree:(NSArray*)tree;
++(void)listSubviewsOfView:(UIView *)view;
++(void)listSubviewsOfView:(UIView *)view withPrefix:(NSString *)prefix;
++(void)setTimeout:(float)time target:(id)object selector:(SEL)selector;
 @end
 
 @implementation Util
-    +(UIView*)getNestedView:(UIView*)parentView tree:(NSArray*)tree{
-        
-        UIView* currentView = parentView;
-        
-        for (int i = 0; i < [tree count]; i++) {
-            currentView = [[currentView subviews] objectAtIndex:[[tree objectAtIndex:i] intValue]];
-        }
-        
-        return currentView;
++(UIView*)getNestedView:(UIView*)parentView tree:(NSArray*)tree {
+    
+    UIView* currentView = parentView;
+    
+    for (int i = 0; i < [tree count]; i++) {
+        currentView = [[currentView subviews] objectAtIndex:[[tree objectAtIndex:i] intValue]];
     }
+    
+    return currentView;
+}
+
++(void)listSubviewsOfView:(UIView *)view {
+    [Util listSubviewsOfView:(UIView *)view withPrefix:@""];
+}
+
++(void)listSubviewsOfView:(UIView *)view withPrefix:(NSString *)prefix {
+    NSArray *subviews = [view subviews];
+    for (UIView *subview in subviews) {
+        NSLog(@"%@ %@ (%d %d; %d %d)", prefix, subview.class
+              , (int)subview.frame.origin.x
+              , (int)subview.frame.origin.y
+              , (int)subview.frame.size.width
+              , (int)subview.frame.size.height);
+
+        [Util listSubviewsOfView:subview withPrefix:[NSString stringWithFormat:@"%@    ", prefix]];
+    }
+}
+
++(void)setTimeout:(float)time target:(id)object selector:(SEL)selector {
+    [NSTimer scheduledTimerWithTimeInterval:time target:object selector:selector userInfo:nil repeats:NO];
+}
 @end
 
-%hook UIWaitScreenView
+@interface NCUtil : NSObject {}
++(void)fire:(NSString*)name;
++(void)observe:(NSString*)name target:(id)target selector:(SEL)selector;
+@end
 
-%new
--(UIView*)getWaitTitle {
-    return self;
-    return [Util getNestedView:self tree:@[@0]];
+@implementation NCUtil
++(void)fire:(NSString*)name {
+    [[NSNotificationCenter defaultCenter] postNotificationName:name object:nil];
 }
-%end
+
++(void)observe:(NSString*)name target:(id)target selector:(SEL)selector {
+    [[NSNotificationCenter defaultCenter] addObserver:target selector:selector name:name object:nil];
+}
+@end
 
 %hook UIView
-
 -(void)addSubview:(UIView *)view {
     %orig;
     
     if (self == passwordView) {
-        passwordViewSubviews = passwordViewSubviews + 1;
-        
-        if (passwordViewSubviews == 4) {
-            [[NSNotificationCenter defaultCenter] postNotificationName:@"passwordViewCreated" object:nil];
+        if (++passwordViewSubviews == 4) {
+            [NCUtil fire:@"passwordViewCreated"];
         }
     }
 }
-
 %end
 
 %hook MyTableView
-
 -(int)tableView:(id)view numberOfRowsInSection:(int)section {
     int count = %orig;
-    
-    // @todo This is a bit of a finiky way of detecting if it's the password view....
-    // will probably cause problems.
-    if (count == 3) {
+
+    if (count == 3 && floorf([Util getNestedView:self tree:@[@0]].frame.size.width) == 310) {
         passwordView = self;
         passwordViewSubviews = 0;
     }
@@ -75,48 +98,34 @@ int passwordViewSubviews = 0;
 - (BOOL)isPasswordView {
     return self == passwordView;
 }
-
 %end
 
 %hook xyzApp
 -(void)applicationDidFinishLaunching:(id)application {
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(submitPasswordView:) name:@"passwordViewCreated" object:nil];
+    [NCUtil observe:@"passwordViewCreated" target:self selector:@selector(submitPasswordView:)];
 
     %orig;
 
-    UIButton* button = [self getNotNowButton];
-    [button HSBCInterstitialNotNowTapped:button];
+    [[self getNotNowButton] HSBCInterstitialNotNowTapped:nil];
 }
-
 
 %new
 -(void)pressContinueAnchor:(NSTimer *)timer {
-    UIAnchor* anchor = [self getContinueAnchor];
-    
-    [anchor buttonPressed:anchor];
+    [[self getContinueAnchor] buttonPressed:nil];
 }
-
-%new
--(void)hideWaitscreen:(NSNotification*)notification {
-    [waitScreen setHidden:YES];
-}
-
 
 %new
 -(void)submitPasswordView:(NSNotification*)notification {
+    Class UIWaitScreenViewClass = objc_getClass("UIWaitScreenView");
+    
     [passwordView setHidden:YES];
     
-    Class clazz = objc_getClass("UIWaitScreenView");
-    waitScreen = [[clazz alloc] initWithTitle];
-    
+    waitScreen = [[UIWaitScreenViewClass alloc] initWithTitle];
     [waitScreen setWaitScreenProperties:@"Connecting..." subTitleText:@"Secure Connection"];
-    
-    NSLog(@"%@", [waitScreen getWaitTitle]);
-    
-    [[self getCurrentMyView] addSubview:waitScreen];
-    
     [waitScreen setHidden:NO];
     [waitScreen startWaitAnimation];
+    
+    [[self getCurrentMyView] addSubview:waitScreen];
     
     UITextField* field = [[self getCurrentTableView] getPasswordField];
 
@@ -126,19 +135,8 @@ int passwordViewSubviews = 0;
     NSError *error;
     NSString *fileContents = [NSString stringWithContentsOfFile:filePath encoding:NSUTF8StringEncoding error:&error];
     field.text = [NSString stringWithFormat:@"%@", fileContents];
-    
-//    
-//    if (error)
-//        NSLog(@"Error reading file: %@", error.localizedDescription);
-//    else
-//        field.text = fileContents;
-//    
-    [NSTimer scheduledTimerWithTimeInterval:0.5f
-                                      target:self
-                                    selector: @selector(pressContinueAnchor:)
-                                    userInfo:nil
-                                     repeats:NO];
-    
+  
+    [Util setTimeout:0.5 target:self selector:@selector(pressContinueAnchor:)];
 }
 
 %new
@@ -147,20 +145,32 @@ int passwordViewSubviews = 0;
 }
 
 %new
--(UIApplication*)getCurrentApp     { return [UIApplication sharedApplication]; }
+-(UIApplication*)getCurrentApp {
+    return [UIApplication sharedApplication];
+}
 
 %new
--(UIWindow*)getCurrentWindow       { return [[self getCurrentApp] keyWindow]; }
+-(UIWindow*)getCurrentWindow {
+    return [[self getCurrentApp] keyWindow];
+}
   
 %new
--(MyView*)getCurrentMyView         { return (MyView*) [Util getNestedView:[self getCurrentWindow] tree:@[@0]]; }
+-(MyView*)getCurrentMyView {
+    return (MyView*) [Util getNestedView:[self getCurrentWindow] tree:@[@0]];
+}
   
 %new
--(MyTableView*)getCurrentTableView { return [[self getCurrentMyView] mainTable]; }
+-(MyTableView*)getCurrentTableView {
+    return [[self getCurrentMyView] mainTable];
+}
 
 %new
--(UIAnchor*)getContinueAnchor     { return (UIAnchor*) [Util getNestedView:[self getCurrentTableView] tree:@[@0, @1, @0, @0, @0]]; }
+-(UIAnchor*)getContinueAnchor {
+    return (UIAnchor*) [Util getNestedView:[self getCurrentTableView] tree:@[@0, @1, @0, @0, @0]];
+}
 
 %new
--(UIButton*)getContinueButton      { return (UIButton*) [Util getNestedView:[self getContinueAnchor] tree:@[@0]]; }
+-(UIButton*)getContinueButton {
+    return (UIButton*) [Util getNestedView:[self getContinueAnchor] tree:@[@0]];
+}
 %end

@@ -25,8 +25,5 @@ __attribute__((visibility("hidden")))
 -(void)stopWaitAnimation;
 -(void)startWaitAnimation;
 -(id)initWithTitle;
-
-//custom
--(UIView*)getWaitTitle;
 @end
 
