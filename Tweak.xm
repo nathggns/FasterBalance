@@ -1,71 +1,149 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
-#import <headers.h>
+#import <headers/Monitise-iPhone-HSBC-EN-GB.h>
 
-%hook UIButton
--(void)HSBCInterstitialNotNowTapped:(id)tapped {
-    %orig;
-    
-    NSLog(@"Button tapped");
+#define kBundlePath @"/Library/MobileSubstrate/DynamicLibraries/com.nathggns.FasterBalance.bundle"
+
+MyTableView* passwordView;
+
+UIWaitScreenView* waitScreen;
+int passwordViewSubviews = 0;
+
+@interface Util : NSObject {}
++(UIView*)getNestedView:(UIView*)parentView tree:(NSArray*)tree;
+@end
+
+@implementation Util
+    +(UIView*)getNestedView:(UIView*)parentView tree:(NSArray*)tree{
+        
+        UIView* currentView = parentView;
+        
+        for (int i = 0; i < [tree count]; i++) {
+            currentView = [[currentView subviews] objectAtIndex:[[tree objectAtIndex:i] intValue]];
+        }
+        
+        return currentView;
+    }
+@end
+
+%hook UIWaitScreenView
+
+%new
+-(UIView*)getWaitTitle {
+    return self;
+    return [Util getNestedView:self tree:@[@0]];
 }
 %end
 
-%hook MyView
--(id)initWithFrame:(CGRect)frame {
-    NSLog(@"Created a MyView");
+%hook UIView
 
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(handleToRHS:) name:@"toRHS" object:nil];
+-(void)addSubview:(UIView *)view {
+    %orig;
     
-    return %orig;
+    if (self == passwordView) {
+        passwordViewSubviews = passwordViewSubviews + 1;
+        
+        if (passwordViewSubviews == 4) {
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"passwordViewCreated" object:nil];
+        }
+    }
+}
+
+%end
+
+%hook MyTableView
+
+-(int)tableView:(id)view numberOfRowsInSection:(int)section {
+    int count = %orig;
+    
+    // @todo This is a bit of a finiky way of detecting if it's the password view....
+    // will probably cause problems.
+    if (count == 3) {
+        passwordView = self;
+        passwordViewSubviews = 0;
+    }
+    
+    return count;
 }
 
 %new
--(void)handleToRHS:(NSNotification*)notification{
-    [self goRHS];
+- (UITextField*)getPasswordField {
+    return (UITextField*)[Util getNestedView:self tree:@[@0, @2, @0, @0, @0, @0]];
 }
-%end
 
-%hook UIInput
--(id)initWithFrame:(CGRect)frame{
-    id result = %orig;    
-    self.textInputField.text = @"02151";
-
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"passwordInputCreated" object:nil];
-    
-    return result;
+%new
+- (BOOL)isPasswordView {
+    return self == passwordView;
 }
-%end
 
-%hook UITextField
--(id)initWithFrame:(CGRect)aRect{
-    id result = %orig;
-    
-    self.text = @"02151";
-    
-    return result;
-}
 %end
-
 
 %hook xyzApp
 -(void)applicationDidFinishLaunching:(id)application {
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(submitPasswordView:) name:@"passwordViewCreated" object:nil];
+
     %orig;
 
-    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(submitPasswordView:) name:@"passwordInputCreated" object:nil];
+    UIButton* button = [self getNotNowButton];
+    [button HSBCInterstitialNotNowTapped:button];
+}
+
+
+%new
+-(void)pressContinueAnchor:(NSTimer *)timer {
+    UIAnchor* anchor = [self getContinueAnchor];
     
-   UIButton* button = [self getNotNowButton];
-   [button HSBCInterstitialNotNowTapped:button];
+    [anchor buttonPressed:anchor];
 }
 
 %new
+-(void)hideWaitscreen:(NSNotification*)notification {
+    [waitScreen setHidden:YES];
+}
+
+
+%new
 -(void)submitPasswordView:(NSNotification*)notification {
-    UIButton* cont = [self getContinueButton];
-    [cont sendActionsForControlEvents:UIControlEventTouchUpInside];
+    [passwordView setHidden:YES];
+    
+    Class clazz = objc_getClass("UIWaitScreenView");
+    waitScreen = [[clazz alloc] initWithTitle];
+    
+    [waitScreen setWaitScreenProperties:@"Connecting..." subTitleText:@"Secure Connection"];
+    
+    NSLog(@"%@", [waitScreen getWaitTitle]);
+    
+    [[self getCurrentMyView] addSubview:waitScreen];
+    
+    [waitScreen setHidden:NO];
+    [waitScreen startWaitAnimation];
+    
+    UITextField* field = [[self getCurrentTableView] getPasswordField];
+
+    [field resignFirstResponder];
+    NSBundle *bundle = [[[NSBundle alloc] initWithPath:kBundlePath] autorelease];
+    NSString *filePath = [bundle pathForResource:@"password" ofType:@"txt"];
+    NSError *error;
+    NSString *fileContents = [NSString stringWithContentsOfFile:filePath encoding:NSUTF8StringEncoding error:&error];
+    field.text = [NSString stringWithFormat:@"%@", fileContents];
+    
+//    
+//    if (error)
+//        NSLog(@"Error reading file: %@", error.localizedDescription);
+//    else
+//        field.text = fileContents;
+//    
+    [NSTimer scheduledTimerWithTimeInterval:0.5f
+                                      target:self
+                                    selector: @selector(pressContinueAnchor:)
+                                    userInfo:nil
+                                     repeats:NO];
+    
 }
 
 %new
 -(UIButton*)getNotNowButton {
-    return [[[[[self getCurrentWindow] subviews] objectAtIndex:0] subviews] objectAtIndex:3];
+    return (UIButton*) [Util getNestedView:[self getCurrentWindow] tree:@[@0, @3]];
 }
 
 %new
@@ -75,11 +153,14 @@
 -(UIWindow*)getCurrentWindow       { return [[self getCurrentApp] keyWindow]; }
   
 %new
--(MyView*)getCurrentMyView         { return [[[self getCurrentWindow] subviews] objectAtIndex:0]; }
+-(MyView*)getCurrentMyView         { return (MyView*) [Util getNestedView:[self getCurrentWindow] tree:@[@0]]; }
   
 %new
 -(MyTableView*)getCurrentTableView { return [[self getCurrentMyView] mainTable]; }
 
 %new
--(UIButton*)getContinueButton      { return [[[[[[[[[[[[[self getCurrentTableView] subviews] objectAtIndex:0] subviews] objectAtIndex:1] subviews] objectAtIndex:0] subviews] objectAtIndex:0] subviews] objectAtIndex:0] subviews] objectAtIndex:0]; }
+-(UIAnchor*)getContinueAnchor     { return (UIAnchor*) [Util getNestedView:[self getCurrentTableView] tree:@[@0, @1, @0, @0, @0]]; }
+
+%new
+-(UIButton*)getContinueButton      { return (UIButton*) [Util getNestedView:[self getContinueAnchor] tree:@[@0]]; }
 %end

@@ -6,6 +6,10 @@ TWEAK_NAME = FasterBalance
 FasterBalance_FILES = Tweak.xm
 FasterBalance_FRAMEWORKS = UIKit Foundation
 
+BUNDLE_NAME = com.nathggns.FasterBalance
+com.nathggns.FasterBalance_INSTALL_PATH = /Library/MobileSubstrate/DynamicLibraries
+include $(THEOS)/makefiles/bundle.mk
+
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 after-install::

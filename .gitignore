@@ -4,3 +4,4 @@ _
 obj
 *.xcodeproj
 hsbc.h
+password.txt
