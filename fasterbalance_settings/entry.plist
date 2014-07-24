@@ -1,0 +1,10 @@
+{
+	entry = {
+		bundle = "fasterbalance_settings";
+		cell = PSLinkCell;
+		detail = "fasterbalance_settingsListController";
+		icon = "fasterbalance_settings.png";
+		isController = 1;
+		label = FasterBalance;
+	};
+}

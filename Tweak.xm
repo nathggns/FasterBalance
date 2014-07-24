@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <Foundation/Foundation.h>
-#import <headers/Monitise-iPhone-HSBC-EN-GB.h>
+#import <hsbc/Monitise-iPhone-HSBC-EN-GB.h>
+#import "headers.h"
 
 #define kBundlePath @"/Library/MobileSubstrate/DynamicLibraries/com.nathggns.FasterBalance.bundle"
 
@@ -8,13 +9,6 @@ MyTableView* passwordView;
 
 UIWaitScreenView* waitScreen;
 int passwordViewSubviews = 0;
-
-@interface Util : NSObject {}
-+(UIView*)getNestedView:(UIView*)parentView tree:(NSArray*)tree;
-+(void)listSubviewsOfView:(UIView *)view;
-+(void)listSubviewsOfView:(UIView *)view withPrefix:(NSString *)prefix;
-+(void)setTimeout:(float)time target:(id)object selector:(SEL)selector;
-@end
 
 @implementation Util
 +(UIView*)getNestedView:(UIView*)parentView tree:(NSArray*)tree {
@@ -50,10 +44,7 @@ int passwordViewSubviews = 0;
 }
 @end
 
-@interface NCUtil : NSObject {}
-+(void)fire:(NSString*)name;
-+(void)observe:(NSString*)name target:(id)target selector:(SEL)selector;
-@end
+
 
 @implementation NCUtil
 +(void)fire:(NSString*)name {
@@ -90,23 +81,36 @@ int passwordViewSubviews = 0;
 }
 
 %new
-- (UITextField*)getPasswordField {
+-(UITextField*)getPasswordField {
     return (UITextField*)[Util getNestedView:self tree:@[@0, @2, @0, @0, @0, @0]];
 }
 
 %new
-- (BOOL)isPasswordView {
+-(BOOL)isPasswordView {
     return self == passwordView;
 }
 %end
 
 %hook xyzApp
 -(void)applicationDidFinishLaunching:(id)application {
+    NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    NSDictionary *prefs=[[NSDictionary alloc] initWithContentsOfFile:@"/var/mobile/Library/Preferences/com.nathggns.FasterBalance.plist"];
+    
+    if (![[prefs objectForKey:@"enabled"] boolValue]){
+        [prefs release];
+        
+        return %orig;
+    }
+    
+    [prefs release];
+
+    
     [NCUtil observe:@"passwordViewCreated" target:self selector:@selector(submitPasswordView:)];
 
     %orig;
 
     [[self getNotNowButton] HSBCInterstitialNotNowTapped:nil];
+    [pool drain];
 }
 
 %new

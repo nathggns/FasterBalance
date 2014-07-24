@@ -13,4 +13,6 @@ include $(THEOS)/makefiles/bundle.mk
 include $(THEOS_MAKE_PATH)/tweak.mk
 
 after-install::
-	install.exec "killall -9 Monitise-iPhone-HSBC-EN-GB"
+	install.exec "killall -9 Monitise-iPhone-HSBC-EN-GB; killall -9 Preferences;"
+SUBPROJECTS += fasterbalance_settings
+include $(THEOS_MAKE_PATH)/aggregate.mk
